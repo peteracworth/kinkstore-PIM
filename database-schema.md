@@ -47,50 +47,50 @@ erDiagram
 
     media_buckets {
         uuid id PK
-        uuid product_id UK_FK "One-to-one with product"
-        varchar sku_label UK "Matches products.sku_label"
-        varchar bucket_status
-        varchar storj_path "e.g., products/RSV-V-PRODUCTXYZ/"
-        int raw_asset_count "Cached"
-        int edited_asset_count "Cached"
-        int published_asset_count "Cached"
-        int project_file_count "Cached"
-        int total_asset_count "Cached"
-        bigint total_size_bytes "Cached"
-        timestamp last_upload_at
-        timestamp last_publish_at
+        uuid productId UK "One-to-one with product"
+        varchar skuLabel UK "Matches products.sku_label"
+        varchar bucketStatus
+        varchar storjPath "e.g., products/RSV-V-PRODUCTXYZ/"
+        int rawAssetCount "Cached"
+        int editedAssetCount "Cached"
+        int publishedAssetCount "Cached"
+        int projectFileCount "Cached"
+        int totalAssetCount "Cached"
+        bigint totalSizeBytes "Cached"
+        timestamp lastUploadAt
+        timestamp lastPublishAt
     }
 
     media_assets {
         uuid id PK
-        uuid media_bucket_id FK_NOT_NULL "Belongs to ONE bucket"
-        varchar media_type "image, video"
-        varchar workflow_state "raw, edited, encoded, published"
-        varchar file_url "Storj URL"
-        varchar file_key "Storj path"
-        bigint file_size
-        varchar encoding_job_id "Video encoding"
-        varchar encoded_video_url "Final video URL"
-        jsonb video_metadata
-        jsonb image_metadata
-        text alt_text
+        uuid mediaBucketId FK "Belongs to ONE bucket"
+        varchar mediaType "image, video"
+        varchar workflowState "raw, edited, encoded, published"
+        varchar fileUrl "Storj URL"
+        varchar fileKey "Storj path"
+        bigint fileSize
+        varchar encodingJobId "Video encoding"
+        varchar encodedVideoUrl "Final video URL"
+        jsonb videoMetadata
+        jsonb imageMetadata
+        text altText
         varchar title
-        varchar original_filename
-        varchar workflow_category "raw_capture, final_ecom, project_file"
-        uuid uploaded_by FK
-        uuid edited_by FK
-        varchar google_drive_file_id
-        varchar google_drive_folder_path
-        uuid import_batch_id
+        varchar originalFilename
+        varchar workflowCategory "raw_capture, final_ecom, project_file"
+        uuid uploadedBy FK
+        uuid editedBy FK
+        varchar googleDriveFileId
+        varchar googleDriveFolderPath
+        uuid importBatchId
     }
 
     product_media_associations {
         uuid id PK
-        uuid media_asset_id FK_NOT_NULL
-        uuid variant_id FK "NULL for product-level"
-        varchar association_type "variant_hero, product_gallery_order"
+        uuid mediaAssetId FK
+        uuid variantId FK "NULL for product-level"
+        varchar associationType "variant_hero, product_gallery_order"
         int position "Gallery ordering"
-        boolean is_featured "Hero images"
+        boolean isFeatured "Hero images"
     }
 
     users {
