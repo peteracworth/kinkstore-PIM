@@ -6,21 +6,15 @@
 erDiagram
     products ||--o{ product_variants : "has many"
     products ||--|| media_buckets : "has one"
-    products ||--o{ product_media : "contains"
 
-    product_variants ||--o{ product_media : "may have hero"
+    media_buckets ||--o{ media_assets : "contains"
 
-    media_assets ||--o{ product_media : "belongs to"
-
-    product_media }o--|| products : "links to"
-    product_media }o--|| media_assets : "links to"
-    product_media }o--o| product_variants : "optional variant"
+    product_variants ||--o{ product_media_associations : "may have hero"
+    media_assets ||--o{ product_media_associations : "optional metadata"
 
     users ||--o{ media_assets : "uploads/edits"
     users ||--o{ sync_logs : "performs"
     users ||--o{ audit_logs : "performs"
-
-    media_buckets }o--|| products : "represents"
 
     products {
         uuid id PK
@@ -69,6 +63,7 @@ erDiagram
 
     media_assets {
         uuid id PK
+        uuid media_bucket_id FK_NOT_NULL "Belongs to ONE bucket"
         varchar media_type "image, video"
         varchar workflow_state "raw, edited, encoded, published"
         varchar file_url "Storj URL"
@@ -89,12 +84,11 @@ erDiagram
         uuid import_batch_id
     }
 
-    product_media {
+    product_media_associations {
         uuid id PK
-        uuid product_id FK
-        uuid media_asset_id FK
-        varchar association_type "raw_source, product_gallery, variant_hero, project_file"
+        uuid media_asset_id FK_NOT_NULL
         uuid variant_id FK "NULL for product-level"
+        varchar association_type "variant_hero, product_gallery_order"
         int position "Gallery ordering"
         boolean is_featured "Hero images"
     }
@@ -146,17 +140,21 @@ erDiagram
 - Bucket contains cached statistics (raw count, edited count, etc.)
 - Physical storage at `products/{sku_label}/` in Storj
 
-### 3. Media Assets ↔ Products (Many-to-Many via product_media)
-- `product_media` is the junction table
-- Represents "media bucket membership"
-- One asset can belong to multiple products (shared media)
-- Association types: `raw_source`, `product_gallery`, `variant_hero`, `project_file`
+### 3. Media Bucket ↔ Media Assets (One-to-Many) **[KEY CHANGE]**
+- **Each asset belongs to exactly ONE bucket** via `media_assets.media_bucket_id` (NOT NULL FK)
+- Direct foreign key relationship (no junction table needed for basic membership)
+- Enforces clear ownership: one asset = one product bucket
+- Query pattern: `SELECT * FROM media_assets WHERE media_bucket_id = ?`
+- If same image needed for multiple products, must copy the file (explicit duplication)
 
-### 4. Variant Hero Images (Optional Relationship)
-- `product_media.variant_id` is NULL for product-level media (shared by all variants)
-- `product_media.variant_id` is set for variant-specific hero images
-- Each variant can have ONE hero image selected from the shared media pool
+### 4. Variant Hero Images (Optional Metadata via product_media_associations)
+- `product_media_associations` table stores ONLY optional metadata
+- Used for: variant hero images and gallery ordering
+- `variant_id` is NULL for product-level associations
+- `variant_id` is set for variant-specific hero images
+- Each variant can have ONE hero image selected from the bucket's media pool
 - `is_featured = TRUE` marks hero images
+- **Note**: This table does NOT establish bucket membership (that's via media_assets.media_bucket_id)
 
 ### 5. Media Workflow States
 ```
@@ -267,43 +265,43 @@ flowchart TD
     C --> D[Create Media Bucket<br/>storj_path = products/RSV-V-PRODUCTXYZ/]
     D --> E[Import Files by Folder Type]
 
-    E --> F1[Photos/Raw Captures/<br/>→ workflow_state: raw<br/>→ association_type: raw_source]
-    E --> F2[Photos/Final ECOM/<br/>→ workflow_state: ready_for_publish<br/>→ association_type: product_gallery]
-    E --> F3[Photos/PSD Cutouts/<br/>→ workflow_category: project_file<br/>→ association_type: project_file]
+    E --> F1[Photos/Raw Captures/<br/>→ workflow_state: raw<br/>→ workflow_category: raw_capture]
+    E --> F2[Photos/Final ECOM/<br/>→ workflow_state: ready_for_publish<br/>→ workflow_category: final_ecom]
+    E --> F3[Photos/PSD Cutouts/<br/>→ workflow_category: project_file<br/>→ workflow_state: raw]
 
     F1 --> G[Upload to Storj<br/>products/RSV-V-PRODUCTXYZ/photos/raw/]
     F2 --> H[Upload to Storj<br/>products/RSV-V-PRODUCTXYZ/photos/edited/]
     F3 --> I[Upload to Storj<br/>products/RSV-V-PRODUCTXYZ/photos/project/]
 
-    G --> J[Create media_assets Record]
+    G --> J[Create media_assets Record<br/>with media_bucket_id FK]
     H --> J
     I --> J
 
-    J --> K[Create product_media Link]
-    K --> L[Update media_buckets Cached Counts<br/>via Trigger]
+    J --> K[Trigger Auto-Updates<br/>media_buckets Cached Counts]
+    K --> L[Import Complete]
 ```
 
 ## Publish to Shopify Flow
 
 ```mermaid
 flowchart TD
-    A[User: Publish Product] --> B[Query bucket.getPublishedAssets]
+    A[User: Publish Product] --> B[Query bucket.getPublishedAssets<br/>SELECT * FROM media_assets<br/>WHERE media_bucket_id = ? AND workflow_state = 'published']
     B --> C{Has Published Assets?}
     C -->|No| D[Mark assets as ready_for_publish]
-    D --> E[Update workflow_state = published]
+    D --> E[Update workflow_state = published<br/>Trigger updates bucket counts]
     C -->|Yes| E
 
     E --> F[Upload Media to Shopify<br/>via Admin GraphQL API]
     F --> G[Associate Media with Product<br/>productCreateMedia mutation]
 
     G --> H{Variant Hero Images?}
-    H -->|Yes| I[Query variant hero images<br/>from product_media where is_featured=true]
+    H -->|Yes| I[Query variant hero images<br/>from product_media_associations<br/>where is_featured=true]
     I --> J[Associate Hero with Variant<br/>in Shopify]
 
     H -->|No| K[Complete]
     J --> K
 
     K --> L[Update sync_logs]
-    L --> M[Update products.last_synced_at]
+    L --> M[Update products.last_synced_at<br/>Update media_buckets.last_publish_at]
 ```
 
