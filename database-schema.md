@@ -70,8 +70,9 @@ erDiagram
         varchar fileUrl "Storj URL"
         varchar fileKey "Storj path"
         bigint fileSize
-        varchar encodingJobId "Video encoding"
-        varchar encodedVideoUrl "Final video URL"
+        varchar encodingHandle "Video: {sku_label}--{uuid} for API lookup"
+        varchar encodingVideoId "Video: ID returned by encoding API"
+        varchar encodedVideoUrl "Video: Final encoded URL from API"
         jsonb videoMetadata
         jsonb imageMetadata
         text altText
@@ -342,4 +343,96 @@ flowchart TD
 2. **Position 1 = product hero image** (also used as variant[0] hero if single variant)
 3. **Variant heroes are explicit associations** where `variant_id IS NOT NULL`
 4. **Bucket is just storage** - images must be explicitly assigned to be published
+
+## Video Encoding API Integration
+
+**Endpoint**: `https://kink-video.kink-video.cluster.kinkstorage.com/graphql`
+**Authentication**: JWT (Auth0)
+
+### Naming Convention (internalName)
+
+Videos are identified by an `internalName` handle that we generate:
+
+```
+{sku_label}--{media_asset_uuid}
+```
+
+**Example**: `RSV-V-PRODUCTXYZ--550e8400-e29b-41d4-a716-446655440000`
+
+| Component | Purpose |
+|-----------|---------|
+| `sku_label` | Searchable by product via `videos(searchTerm: "RSV-V-PRODUCTXYZ")` |
+| `--` | Clean separator (SKUs may contain single dashes) |
+| `media_asset_uuid` | Direct link to `media_assets` record, guaranteed unique |
+
+### API Mutations
+
+| Mutation | Args | Returns | Description |
+|----------|------|---------|-------------|
+| `startVideoUpload` | `content: String!`, `internalName: String` | `{ id, url }` | Get upload URL |
+| `finishVideoUpload` | `videoId: String!` | - | Trigger encoding |
+| `promoteAssets` | `imageAssetIds: [ID]!`, `videoAssetIds: [ID]!` | - | Promote to active |
+| `softDeleteVideo` | `videoId: ID!` | - | Soft delete |
+
+### API Queries
+
+| Query | Args | Returns | Description |
+|-------|------|---------|-------------|
+| `video` | `videoId: String!` | `TranscodedVideo` | Get by ID (fast) |
+| `videos` | `take, skip, searchTerm` | `[TranscodedVideo]` | Search/list videos |
+
+### Response Types
+
+```graphql
+type TranscodedVideo {
+  id: ID!
+  internalName: String       # Our tracking handle
+  owner: String!
+  status: FileUploadingStatus!  # Uploaded | NotUploaded
+  videoAssets: [VideoAsset]  # Encoded outputs
+  imageAssets: [ImageAsset]  # Generated thumbnails
+}
+
+type VideoAsset {
+  id: ID!
+  url: URL!        # Final encoded video URL
+  format: String!  # mp4, webm, etc.
+  type: String!    # hls, dash, etc.
+  status: String!
+}
+
+type ImageAsset {
+  id: ID!
+  url: URL!
+  resolution: String!  # e.g., "1920x1080"
+  tag: String!
+}
+```
+
+### Video Encoding Workflow
+
+```mermaid
+flowchart TD
+    A[Edited video in Storj<br/>workflow_state: edited] --> B[Generate internalName<br/>sku_label--media_asset_uuid]
+    B --> C[startVideoUpload mutation<br/>content: filename<br/>internalName: generated handle]
+    C --> D[API returns<br/>id + upload URL]
+    D --> E[Upload video file<br/>to returned URL]
+    E --> F[finishVideoUpload mutation<br/>videoId: returned id]
+    F --> G[Store in media_assets:<br/>encoding_handle = internalName<br/>encoding_video_id = id<br/>workflow_state = encoding_submitted]
+    G --> H[Poll: video query<br/>videoId: encoding_video_id]
+    H --> I{status = Uploaded?}
+    I -->|No| J[Wait & retry]
+    J --> H
+    I -->|Yes| K[Extract videoAssets.url<br/>Store in encoded_video_url<br/>workflow_state = encoded]
+    K --> L[Ready for publish]
+```
+
+### Fields Stored in media_assets
+
+| Field | Value | Purpose |
+|-------|-------|---------|
+| `encoding_handle` | `{sku_label}--{uuid}` | Our internalName for searching |
+| `encoding_video_id` | API-returned ID | Direct lookup via `video(videoId)` |
+| `encoded_video_url` | `videoAssets[0].url` | Final playable URL |
+| `workflow_state` | `encoding_submitted` → `encoded` | Track progress |
 

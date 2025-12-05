@@ -219,8 +219,9 @@ CREATE TABLE media_assets (
   file_mime_type VARCHAR(100),
 
   -- Video-specific (for encoding workflow)
-  encoding_job_id VARCHAR(255), -- external encoding API job ID
-  encoded_video_url VARCHAR(500), -- final encoded video URL from API
+  encoding_handle VARCHAR(255), -- our internalName: {sku_label}--{uuid}
+  encoding_video_id VARCHAR(255), -- ID returned by encoding API for direct lookup
+  encoded_video_url VARCHAR(500), -- final encoded video URL from videoAssets[].url
   video_metadata JSONB, -- duration, resolution, codec, etc.
 
   -- Image-specific
@@ -916,18 +917,53 @@ CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
 ```
 
 ### Video Encoding API Integration
-**API Type**: GraphQL
-**Upload**: Video file uploaded to provided URL
-**Tracking**: Videos queryable by name (given at upload time)
-**Workflow**: Query for video by name to check encoding status and retrieve final URL
 
-**Implementation**:
-- Create GraphQL client for encoding API
-- Upload edited video with unique name (e.g., `product-{shopify_id}-{timestamp}`)
-- Store encoding job name in `media_assets.encoding_job_id`
-- Poll API periodically to query video by name
-- Update `media_assets.encoded_video_url` when complete
-- Update `media_assets.workflow_state` to 'encoded'
+**Endpoint**: `https://kink-video.kink-video.cluster.kinkstorage.com/graphql`
+**Authentication**: JWT (Auth0)
+**API Type**: GraphQL
+
+#### Naming Convention (internalName)
+
+Videos are tracked by an `internalName` handle we generate:
+```
+{sku_label}--{media_asset_uuid}
+```
+**Example**: `RSV-V-PRODUCTXYZ--550e8400-e29b-41d4-a716-446655440000`
+
+- `sku_label` prefix enables searching all videos for a product
+- Double dash `--` separates cleanly (SKUs may contain single dashes)
+- UUID suffix guarantees uniqueness and links back to our record
+
+#### Key Mutations
+- `startVideoUpload(content, internalName)` → Returns `{ id, url }` for upload
+- `finishVideoUpload(videoId)` → Triggers encoding after upload complete
+
+#### Key Queries
+- `video(videoId)` → Get single video by ID (fast, direct lookup)
+- `videos(searchTerm)` → Search by internalName (find all videos for a SKU)
+
+#### Response Structure
+```graphql
+TranscodedVideo {
+  id: ID!
+  internalName: String
+  status: FileUploadingStatus  # Uploaded | NotUploaded
+  videoAssets: [{ id, url, format, type }]  # Encoded outputs
+  imageAssets: [{ id, url, resolution }]    # Generated thumbnails
+}
+```
+
+#### Implementation
+- Generate `internalName`: `{sku_label}--{media_asset.id}`
+- Call `startVideoUpload` → get upload URL and video ID
+- Upload file to returned URL
+- Call `finishVideoUpload` to trigger encoding
+- Store in `media_assets`:
+  - `encoding_handle` = our internalName
+  - `encoding_video_id` = API-returned ID
+- Poll `video(videoId)` until `status = "Uploaded"`
+- Extract `videoAssets[0].url` → store in `encoded_video_url`
+- Update `workflow_state` to `'encoded'`
 
 ## Media Versioning & Historical Asset Management
 
