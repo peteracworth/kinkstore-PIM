@@ -4,6 +4,10 @@ A Product Information Management (PIM) system for managing ~1,000 products with 
 
 ## Overview
 
+ The Kinkstore PIM project in-houses the product catalog from shopify (products and product variants), pulls in the images and image editing workflow currently done in google drive in SKU folders (currently Meghan shooting, alva editing and James publishing ), pulls in video management and encoding (currently megan posting raw, someone editing, meghan currently pushes to encode and someone else publishes resulting link to shopify), and marries all this into one interface where the user can see, create, detete, edit all the products and the associated media, create and manage new media, assign media to products, and publish/remove products from shopify etc.
+
+ The hierarchy and labelling associated with storage closely mimics the existing google drive folder naming conventions so as to provide continuity.
+
 This system migrates from Google Drive-based media storage to a database-driven solution with cloud storage (Storj), providing:
 
 - **Product Management**: Import and sync products/variants from Shopify
