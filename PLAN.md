@@ -1160,11 +1160,12 @@ storj://kinkstore-pim/
 │       │       ├── filler-plug-4.psd
 │       │       └── ...
 │       └── videos/
-│           ├── raw/
-│           ├── edited/
-│           ├── encoded/
-│           └── project/
+│           ├── raw/        ← Source video files
+│           ├── edited/     ← Trimmed/stitched (pre-encoding)
+│           └── project/    ← Video project files
 ```
+
+**Note**: Encoded videos are NOT stored in Storj. They are hosted by the external encoding service; we store only the URL in `media_assets.encoded_video_url`.
 
 #### Class Interfaces
 

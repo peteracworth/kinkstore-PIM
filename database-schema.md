@@ -18,11 +18,11 @@ erDiagram
     users ||--o{ audit_logs : "performs"
 
     products {
-        uuid id PK
-        bigint shopify_product_id UK "Shopify ID"
-        varchar title
+        uuid id PK "Primary Key"
+        bigint shopify_product_id UK "UNIQUE - Shopify ID"
+        varchar sku_label UK "UNIQUE - Internal label"
+        varchar title "NOT NULL"
         text description
-        varchar sku_label UK "Internal label (NOT Shopify SKU)"
         varchar vendor
         varchar product_type
         text[] tags
@@ -32,10 +32,10 @@ erDiagram
     }
 
     product_variants {
-        uuid id PK
-        uuid product_id FK
-        bigint shopify_variant_id UK
-        varchar sku UK "Actual Shopify SKU"
+        uuid id PK "Primary Key"
+        uuid product_id FK "FK -> products.id"
+        bigint shopify_variant_id UK "UNIQUE"
+        varchar sku UK "UNIQUE - Shopify SKU"
         varchar title
         decimal price
         decimal weight
@@ -47,88 +47,98 @@ erDiagram
     }
 
     media_buckets {
-        uuid id PK
-        uuid productId UK "One-to-one with product"
-        varchar skuLabel UK "Matches products.sku_label"
-        varchar bucketStatus
-        varchar storjPath "e.g., products/RSV-V-PRODUCTXYZ/"
-        int rawAssetCount "Cached"
-        int editedAssetCount "Cached"
-        int publishedAssetCount "Cached"
-        int projectFileCount "Cached"
-        int totalAssetCount "Cached"
-        bigint totalSizeBytes "Cached"
-        timestamp lastUploadAt
-        timestamp lastPublishAt
+        uuid id PK "Primary Key"
+        uuid product_id FK_UK "FK -> products.id, UNIQUE"
+        varchar sku_label UK "UNIQUE - matches products.sku_label"
+        varchar bucket_status
+        varchar storj_path "NOT NULL"
+        int raw_asset_count "Cached count"
+        int edited_asset_count "Cached count"
+        int project_file_count "Cached count"
+        int total_asset_count "Cached count"
+        bigint total_size_bytes "Cached"
+        timestamp last_upload_at
+        timestamp last_publish_at
     }
 
     media_assets {
-        uuid id PK
-        uuid mediaBucketId FK "Belongs to ONE bucket"
-        varchar mediaType "image, video"
-        varchar workflowState "raw, edited, encoded, published"
-        varchar fileUrl "Storj URL"
-        varchar fileKey "Storj path"
-        bigint fileSize
-        varchar encodingHandle "Video: {sku_label}--{uuid} for API lookup"
-        varchar encodingVideoId "Video: ID returned by encoding API"
-        varchar encodedVideoUrl "Video: Final encoded URL from API"
-        jsonb videoMetadata
-        jsonb imageMetadata
-        text altText
+        uuid id PK "Primary Key"
+        uuid media_bucket_id FK "FK -> media_buckets.id, NOT NULL"
+        varchar media_type "NOT NULL: image, video"
+        varchar workflow_state "NOT NULL: raw, edited, encoded, published"
+        varchar file_url "NOT NULL - Storj URL"
+        varchar file_key "NOT NULL - Storj path"
+        bigint file_size
+        varchar encoding_handle "Video only: sku_label--uuid"
+        varchar encoding_video_id "Video only: API-returned ID"
+        varchar encoded_video_url "Video only: EXTERNAL URL (not Storj)"
+        jsonb video_metadata
+        jsonb image_metadata
+        text alt_text
         varchar title
-        varchar originalFilename
-        varchar workflowCategory "raw_capture, final_ecom, project_file"
-        uuid uploadedBy FK
-        uuid editedBy FK
-        varchar googleDriveFileId "LEGACY - import reference only"
-        varchar googleDriveFolderPath "LEGACY - import reference only"
-        uuid importBatchId
+        varchar original_filename "NOT NULL"
+        varchar workflow_category "NOT NULL: raw_capture, final_ecom, project_file"
+        uuid uploaded_by FK "FK -> users.id"
+        uuid edited_by FK "FK -> users.id"
+        varchar google_drive_file_id "LEGACY"
+        varchar google_drive_folder_path "LEGACY"
+        uuid import_batch_id
     }
 
     product_media_associations {
-        uuid id PK
-        uuid productId FK "Required - which product"
-        uuid mediaAssetId FK "Which media asset"
-        uuid variantId FK "NULL for product-level, set for variant hero"
-        varchar associationType "product_image, product_video, variant_hero"
-        int position "Gallery ordering (1 = hero for product-level)"
-        boolean isPublished "Whether to publish to Shopify"
+        uuid id PK "Primary Key"
+        uuid product_id FK "FK -> products.id, NOT NULL"
+        uuid media_asset_id FK "FK -> media_assets.id, NOT NULL"
+        uuid variant_id FK "FK -> product_variants.id, NULL for product-level"
+        varchar association_type "NOT NULL: product_image, product_video, variant_hero"
+        int position "Gallery order (1 = hero)"
+        boolean is_published "Default: true"
+        constraint uk_product_media UK "UNIQUE(product_id, media_asset_id, association_type)"
+        constraint uk_variant_hero UK "UNIQUE(variant_id) WHERE variant_hero"
     }
 
     users {
-        uuid id PK
-        varchar auth0_user_id UK
-        varchar email UK
+        uuid id PK "Primary Key"
+        varchar auth0_user_id UK "UNIQUE - NOT NULL"
+        varchar email UK "UNIQUE - NOT NULL"
         varchar name
-        varchar role "admin, photographer, writer, viewer"
-        boolean is_active
+        varchar role "NOT NULL: admin, photographer, writer, viewer"
+        boolean is_active "Default: true"
         timestamp last_login_at
     }
 
     sync_logs {
-        uuid id PK
-        varchar sync_type
+        uuid id PK "Primary Key"
+        varchar sync_type "NOT NULL"
         varchar entity_type
         uuid entity_id
-        varchar status
+        varchar status "NOT NULL"
         text error_message
         jsonb details
-        uuid performed_by FK
+        uuid performed_by FK "FK -> users.id"
         timestamp created_at
     }
 
     audit_logs {
-        uuid id PK
-        varchar table_name
-        uuid record_id
-        varchar action
+        uuid id PK "Primary Key"
+        varchar table_name "NOT NULL"
+        uuid record_id "NOT NULL"
+        varchar action "NOT NULL"
         jsonb old_values
         jsonb new_values
-        uuid user_id FK
+        uuid user_id FK "FK -> users.id"
         timestamp created_at
     }
 ```
+
+### Constraint Legend
+| Symbol | Meaning |
+|--------|---------|
+| **PK** | Primary Key |
+| **UK** | Unique constraint |
+| **FK** | Foreign Key |
+| **FK_UK** | Foreign Key that is also Unique (one-to-one) |
+| **NOT NULL** | Required field |
 
 ## Key Relationships Explained
 
@@ -276,11 +286,16 @@ storj://kinkstore-pim/
         │   └── project/                ← workflow_category: project_file
         │       └── product-1.psd
         └── videos/
-            ├── raw/                    ← workflow_state: raw
-            ├── edited/                 ← workflow_state: edited
-            ├── encoded/                ← workflow_state: encoded (from API)
-            └── project/                ← project files
+            ├── raw/                    ← workflow_state: raw (source files)
+            ├── edited/                 ← workflow_state: edited (trimmed/stitched, pre-encoding)
+            └── project/                ← workflow_category: project_file
 ```
+
+**Note on Encoded Videos:**
+- Encoded videos are **NOT stored in Storj**
+- They are hosted by the external encoding service
+- We store only the **URL** in `media_assets.encoded_video_url`
+- The URL points to the encoding service's CDN
 
 ## Import Flow
 
