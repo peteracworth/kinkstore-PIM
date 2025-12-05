@@ -48,7 +48,7 @@ erDiagram
 
     media_buckets {
         uuid id PK "Primary Key"
-        uuid product_id FK_UK "FK -> products.id, UNIQUE"
+        uuid product_id FK "FK -> products.id (UNIQUE)"
         varchar sku_label UK "UNIQUE - matches products.sku_label"
         varchar bucket_status
         varchar storj_path "NOT NULL"
@@ -137,8 +137,7 @@ erDiagram
 | **PK** | Primary Key |
 | **UK** | Unique constraint |
 | **FK** | Foreign Key |
-| **FK_UK** | Foreign Key that is also Unique (one-to-one) |
-| **NOT NULL** | Required field |
+| **(UNIQUE)** in comment | Foreign Key that is also Unique (one-to-one relationship) |
 
 ## Key Relationships Explained
 
