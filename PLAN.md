@@ -277,6 +277,9 @@ CREATE TABLE product_media_associations (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
 
+  -- Shopify sync tracking
+  shopify_media_id VARCHAR(255), -- gid://shopify/MediaImage/... - NULL if not yet synced to Shopify
+
   -- A variant can only have one hero image
   UNIQUE(variant_id) WHERE variant_id IS NOT NULL AND association_type = 'variant_hero',
   -- Prevent duplicate assignments of same media to same product
@@ -288,12 +291,14 @@ CREATE INDEX idx_pma_asset ON product_media_associations(media_asset_id);
 CREATE INDEX idx_pma_variant ON product_media_associations(variant_id);
 CREATE INDEX idx_pma_type ON product_media_associations(association_type);
 CREATE INDEX idx_pma_position ON product_media_associations(product_id, position);
+CREATE INDEX idx_pma_shopify_media ON product_media_associations(shopify_media_id);
 
 COMMENT ON TABLE product_media_associations IS 'SOURCE OF TRUTH for publishing. Defines which images/videos are assigned to each product, their order, and variant heroes. Bucket membership is separate (organizational only).';
 COMMENT ON COLUMN product_media_associations.product_id IS 'Required: which product this media is assigned to';
 COMMENT ON COLUMN product_media_associations.variant_id IS 'NULL for product-level images; set for variant-specific hero images';
 COMMENT ON COLUMN product_media_associations.position IS 'Gallery order: position 1 = hero image (for product_image type)';
 COMMENT ON COLUMN product_media_associations.is_published IS 'If false, media is assigned but not published to Shopify';
+COMMENT ON COLUMN product_media_associations.shopify_media_id IS 'Shopify MediaImage GID - NULL until synced to Shopify, enables tracking and drift detection';
 ```
 
 #### `media_buckets`
@@ -732,6 +737,50 @@ CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
    - Allow retry of failed imports
 
 **Deliverable**: Can import all media from Google Drive folders to PIM
+
+### Phase 5b: Initial Media Association Population
+
+**Goal**: Populate `product_media_associations` based on what's already published in Shopify
+
+This phase runs AFTER Google Drive import to establish the baseline state - matching imported media assets to their Shopify counterparts.
+
+#### Image Population
+
+1. **Query Shopify Product Media**
+   - For each product, query Shopify Admin GraphQL for current media
+   - Retrieve: `id` (shopify_media_id), position, `originalSrc` URL, alt text
+   - Store results temporarily for matching
+
+2. **Match to Imported media_assets**
+   - Extract filename from Shopify URL (e.g., `DSC09935_grande.jpg` → `DSC09935`)
+   - Match to `media_assets` where:
+     - `media_bucket.sku_label` = product's `sku_label`
+     - `workflow_category` = `final_ecom`
+     - `original_filename` contains extracted base name
+   - Log unmatched Shopify images for review
+
+3. **Create Associations**
+   - Insert `product_media_associations` with:
+     - Correct `position` from Shopify
+     - `shopify_media_id` for future sync reference
+     - `is_published = TRUE`
+   - For local images not in Shopify: `is_published = FALSE`
+
+#### Video Population
+
+1. **Query Encoding API**
+   - Search by `sku_label` prefix to find all encoded videos
+   - Match to imported video `media_assets` by `encoding_handle`
+
+2. **Parse Product Descriptions**
+   - Check if encoded video URL appears in `products.description_html`
+   - If found: video is currently "published" (embedded)
+
+3. **Create Video Associations**
+   - Insert `product_media_associations` with `association_type = 'product_video'`
+   - Set `is_published = TRUE` only if URL found in description
+
+**Deliverable**: `product_media_associations` table accurately reflects current Shopify state
 
 ### Phase 6: Video Encoding Integration (Week 6)
 **Goal**: Handle video encoding workflow

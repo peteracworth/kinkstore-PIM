@@ -21,7 +21,7 @@ A Product Information Management (PIM) system for managing ~1,000 products with 
 The following is not currently in scope
 
 - **Collections**: Products in this system are assigned Meta data indicating categorization via Jame's dewie decimal system. Administration of collections depending on this data remains in shopify for now
-- **Bundles** : The existing bundles plug-in has no API and thus bundling of products remains in shopify. Nevertheless, once a bundle exists in shopify, it will be exported to this system for editing and mapping of media assets.
+- **Bundles** : The existing bundles plug-in has no API and thus bundling of products remains in shopify. Nevertheless, once a bundle exists in shopify, it will be exported to this system for editing and mapping of media assets. (NOTE: It would be nice to have a periodic export of the bundling relationshp, if only to be able to suggest media associated with its components be added)
 - **Blog** : No thought has yet been given to how this system will interact with the blog system, if at all. If relevant blog articles can be pulled onto product pages via liquid code, we likely do not need an integration.
 - **Other Pages** : collection pages, landing pages, specialized pages are all out of scope.
  
