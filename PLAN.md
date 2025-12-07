@@ -10,10 +10,10 @@ Building a Product Information Management (PIM) system for ~1,000 products with 
 - **Backend**: Node.js API (deployed on Vercel serverless functions or separate Node server)
 - **Database**: PostgreSQL (Supabase)
 - **File Storage**: Storj (S3-compatible)
-- **Authentication**: Auth0 with Google OAuth
+- **Authentication**: Supabase Auth with Google OAuth
 - **External Integrations**:
   - Shopify Admin GraphQL API
-  - Video encoding GraphQL API (upload via URL, query by name)
+  - Video Encoding Server (GraphQL API with API Key auth)
 - **Media Processing Libraries**:
   - Image editing: `react-image-crop` + `sharp` (crop, resize, rotate)
   - Video editing: `ffmpeg.js` or `remotion` (trim, stitch intro/outro)
@@ -473,7 +473,7 @@ CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
 ```
 /api
 ├── /auth
-│   ├── POST /login (Auth0 callback)
+│   ├── POST /login (Supabase Auth callback)
 │   ├── POST /logout
 │   └── GET /me (current user info)
 ├── /products
@@ -567,7 +567,7 @@ CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
 │   └── useFileUpload.ts
 ├── /services
 │   ├── api.ts (axios instance)
-│   ├── auth.ts (Auth0 integration)
+│   ├── auth.ts (Supabase Auth integration)
 │   ├── shopify.ts
 │   ├── storage.ts (Storj S3 operations)
 │   └── videoEncoding.ts
@@ -596,9 +596,9 @@ CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
    - Set up audit logging triggers
 
 3. **Authentication**
-   - Configure Auth0 tenant with Google OAuth
-   - Implement Auth0 integration in backend
-   - Create Auth0 React SDK integration
+   - Configure Supabase Auth with Google OAuth provider
+   - Implement Supabase Auth integration in backend
+   - Create Supabase Auth React integration
    - Build login/logout flow
    - Implement role-based access control (RBAC) middleware
    - Create user management endpoints
@@ -869,7 +869,7 @@ This phase runs AFTER Google Drive import to establish the baseline state - matc
 ## Security Considerations
 
 ### Authentication & Authorization
-- Auth0 JWT validation on all API endpoints
+- Supabase Auth JWT validation on all API endpoints
 - Role-based access control (RBAC)
   - **Admin**: Full access
   - **Photographer**: Upload/edit media, view products
@@ -968,9 +968,18 @@ This phase runs AFTER Google Drive import to establish the baseline state - matc
 
 ### Video Encoding API Integration
 
-**Endpoint**: `https://kink-video.kink-video.cluster.kinkstorage.com/graphql`
-**Authentication**: JWT (Auth0)
+**Endpoint**: `https://server.kinkstorage.com/graphql`
+**Authentication**: API Key (Bearer token)
 **API Type**: GraphQL
+
+> **⚠️ Prerequisite**: The video encoding server currently uses basic auth. API Key authentication must be implemented on the server before this integration can proceed. This server-side change is **outside the scope of this project**.
+>
+> **API Key Spec for Video Server**:
+> - Key format: `vsk_live_` prefix + 32-char base64 (e.g., `vsk_live_a1B2c3D4e5F6...`)
+> - Transmission: `Authorization: Bearer <key>`
+> - Server stores: SHA-256 hash of key (never plaintext)
+> - Rate limiting: 1000 req/min per key
+> - Lockout: 15 min after 10 failed auth attempts
 
 #### Naming Convention (internalName)
 
@@ -1549,7 +1558,7 @@ All three variants share the same media pool and can each select their hero imag
 - **Vercel**: $20/month (Pro plan) or $0 (Hobby, if within limits)
 - **Supabase**: $25/month (Pro plan for better performance) or $0 (Free tier for testing)
 - **Storj**: ~$4/TB/month storage + $7/TB bandwidth (depends on usage)
-- **Auth0**: $0 (Free tier for up to 7,000 active users)
+- **Supabase Auth**: $0 (included in Supabase plan)
 - **Video Encoding API**: TBD based on provider
 
 **Estimated Total**: $50-100/month depending on storage and usage
@@ -1569,7 +1578,7 @@ All three variants share the same media pool and can each select their hero imag
 Once this plan is approved:
 1. Create project repositories (monorepo or separate repos)
 2. Set up Supabase project and run migrations
-3. Configure Auth0 tenant
+3. Configure Supabase Auth with Google OAuth
 4. Set up Storj bucket
 5. Begin Phase 1 implementation
 

@@ -34,7 +34,7 @@ The following is not currently in scope
 | Backend | Node.js API (Vercel) |
 | Database | PostgreSQL (Supabase) |
 | File Storage | Storj (S3-compatible) |
-| Authentication | Auth0 + Google OAuth |
+| Authentication | Supabase Auth + Google OAuth |
 | E-commerce | Shopify Admin GraphQL API |
 | Video Encoding | External GraphQL API |
 
@@ -56,7 +56,7 @@ Set up project infrastructure, database, and authentication.
 |------|-------------|--------|
 | 1.1 Project Setup | Repos, Vercel, Supabase, Storj | [KIN-5](https://linear.app/kink/issue/KIN-5) |
 | 1.2 Database Setup | Tables, migrations, RLS, triggers | [KIN-6](https://linear.app/kink/issue/KIN-6) |
-| 1.3 Authentication | Auth0, Google OAuth, RBAC | [KIN-7](https://linear.app/kink/issue/KIN-7) |
+| 1.3 Authentication | Supabase Auth, Google OAuth, RBAC | [KIN-7](https://linear.app/kink/issue/KIN-7) |
 | 1.4 Frontend Shell | React app, routing, layout | [KIN-8](https://linear.app/kink/issue/KIN-8) |
 
 ### Phase 2: Shopify Integration & Product Import (Week 2)

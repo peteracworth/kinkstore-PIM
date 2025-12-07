@@ -477,8 +477,8 @@ flowchart TD
 
 ## Video Encoding API Integration
 
-**Endpoint**: `https://kink-video.kink-video.cluster.kinkstorage.com/graphql`
-**Authentication**: JWT (Auth0)
+**Endpoint**: `https://server.kinkstorage.com/graphql`
+**Authentication**: API Key (Bearer token)
 
 ### Naming Convention (internalName)
 
