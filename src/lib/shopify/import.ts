@@ -374,9 +374,9 @@ async function upsertVariantHeroMedia(
   const now = new Date().toISOString()
 
   for (const { node: variant } of variants) {
-    if (!variant.featuredMedia) continue
-    const media = variant.featuredMedia
-    const url = media.image?.url
+    const image = variant.image
+    if (!image?.url || !image.id) continue
+    const url = image.url
     if (!url) continue
 
     const filename = extractFilename(url)
@@ -386,18 +386,18 @@ async function upsertVariantHeroMedia(
       .from('product_images_unassociated')
       .upsert(
         {
-          shopify_media_id: media.id,
+          shopify_media_id: image.id,
           shopify_product_id: extractShopifyId(product.id),
           shopify_variant_id: extractShopifyId(variant.id),
           product_id: productId,
           variant_id: null, // we are not linking to local variant UUIDs yet
           source_url: url,
           filename,
-          alt_text: media.alt ?? null,
+          alt_text: image.altText ?? null,
           mime_type: mime,
           byte_size: null,
-          width: media.image?.width ?? null,
-          height: media.image?.height ?? null,
+          width: image.width ?? null,
+          height: image.height ?? null,
           position: 1,
           is_variant_hero: true,
           shopify_created_at: null,
@@ -408,7 +408,7 @@ async function upsertVariantHeroMedia(
       )
 
     if (error) {
-      console.error(`Failed to upsert variant hero media ${media.id}:`, error.message)
+      console.error(`Failed to upsert variant hero media ${image.id}:`, error.message)
     }
   }
 }

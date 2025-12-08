@@ -40,14 +40,12 @@ export const PRODUCT_FRAGMENT = `
             name
             value
           }
-          featuredMedia {
+          image {
             id
-            alt
-            image {
-              url
-              width
-              height
-            }
+            altText
+            url
+            width
+            height
           }
           inventoryItem {
             measurement {
@@ -180,14 +178,12 @@ export interface ShopifyVariant {
       }
     }
   }
-  featuredMedia?: {
-    id: string
-    alt?: string | null
-    image?: {
-      url?: string | null
-      width?: number | null
-      height?: number | null
-    } | null
+  image?: {
+    id?: string | null
+    altText?: string | null
+    url?: string | null
+    width?: number | null
+    height?: number | null
   } | null
 }
 
