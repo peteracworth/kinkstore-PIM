@@ -143,7 +143,7 @@ Final polish, admin tools, and UX improvements.
 ### SKU Architecture
 - **Product `sku_label`**: Internal identifier (e.g., `RSV-V-PRODUCTXYZ`), unique per product
 - **Variant `sku`**: Actual Shopify SKU (e.g., `RSV-V-PRODUCTXYZ-S`, `RSV-V-PRODUCTXYZ-M`), unique per variant
-- Single-variant products: `sku_label` == `variant.sku` (allowed)
+- Single-variant products: `sku_label` must equal the sole `variant.sku` (enforced)
 - Cross-table collisions are allowed (a variant SKU may equal another product's sku_label); `media_buckets.sku_label` remains unique per product
 
 ### Media Buckets vs Publishing
