@@ -90,7 +90,7 @@ CREATE TABLE products (
                           -- This is an internal label derived from variant SKUs by removing size suffix
                           -- Example: variants have "RSV-V-PRODUCTXYZ-S", "RSV-V-PRODUCTXYZ-M", "RSV-V-PRODUCTXYZ-L"
                           --          product sku_label is "RSV-V-PRODUCTXYZ" (does not exist in Shopify)
-                          -- MUST be unique across all products AND must not collide with any variant SKU
+                          -- MUST be unique across all products. Single-variant products: sku_label == variant.sku is allowed.
   vendor VARCHAR(255),
   product_type VARCHAR(255),
   tags TEXT[], -- PostgreSQL array
@@ -138,55 +138,12 @@ CREATE UNIQUE INDEX idx_variants_sku_unique ON product_variants(sku) WHERE sku I
 
 #### SKU Uniqueness Constraints
 
-**Cross-table uniqueness requirement:**
-- `products.sku_label` must be unique across all products
-- `product_variants.sku` must be unique across all variants
-- **`products.sku_label` must NOT collide with ANY `product_variants.sku`**
-
-**Database enforcement:**
-```sql
--- Constraint function to prevent product sku_label from matching any variant sku
-CREATE OR REPLACE FUNCTION check_product_sku_label_uniqueness()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Check if this sku_label exists as a variant SKU anywhere
-  IF EXISTS (
-    SELECT 1 FROM product_variants
-    WHERE sku = NEW.sku_label
-  ) THEN
-    RAISE EXCEPTION 'Product sku_label "%" conflicts with existing variant SKU', NEW.sku_label;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_check_product_sku_label
-  BEFORE INSERT OR UPDATE ON products
-  FOR EACH ROW
-  WHEN (NEW.sku_label IS NOT NULL)
-  EXECUTE FUNCTION check_product_sku_label_uniqueness();
-
--- Constraint function to prevent variant sku from matching any product sku_label
-CREATE OR REPLACE FUNCTION check_variant_sku_uniqueness()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Check if this variant SKU exists as a product sku_label anywhere
-  IF EXISTS (
-    SELECT 1 FROM products
-    WHERE sku_label = NEW.sku
-  ) THEN
-    RAISE EXCEPTION 'Variant SKU "%" conflicts with existing product sku_label', NEW.sku;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_check_variant_sku
-  BEFORE INSERT OR UPDATE ON product_variants
-  FOR EACH ROW
-  WHEN (NEW.sku IS NOT NULL)
-  EXECUTE FUNCTION check_variant_sku_uniqueness();
-```
+**Uniqueness rules (updated):**
+- `products.sku_label` unique per product
+- `product_variants.sku` unique per variant
+- Single-variant products: `sku_label == variant.sku` is allowed
+- Cross-table collisions are allowed (variant SKU may equal another product's sku_label)
+- `media_buckets.sku_label` unique; matches product sku_label
 
 **Why this matters:**
 ```

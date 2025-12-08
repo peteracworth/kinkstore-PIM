@@ -334,11 +334,12 @@ WHERE status = 'archived' AND shopify_status = 'ACTIVE';
 
 ## SKU Architecture
 
-### Critical Constraint: No Collisions
-```sql
--- products.sku_label must NOT match any product_variants.sku
--- Enforced by database triggers
-```
+### Uniqueness Rules (updated)
+- `products.sku_label` is unique per product.
+- `product_variants.sku` is unique per variant.
+- Single-variant products: `sku_label` == `variant.sku` (allowed).
+- Cross-table collisions are allowed (a variant SKU may equal another product's sku_label); no cross-table trigger blocks this now.
+- `media_buckets.sku_label` is unique and matches the product sku_label for bucket identity.
 
 ### Examples
 
