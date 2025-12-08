@@ -66,9 +66,25 @@ export async function GET() {
       .from('products')
       .select('*', { count: 'exact', head: true })
 
+    // Get unassociated media count and last update
+    const { count: mediaCount } = await supabase
+      .from('product_images_unassociated')
+      .select('*', { count: 'exact', head: true })
+
+    const { data: mediaLast } = await supabase
+      .from('product_images_unassociated')
+      .select('updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
     return NextResponse.json({
       lastSync,
       productCount,
+      unassociatedMedia: {
+        count: mediaCount ?? 0,
+        lastUpdated: mediaLast?.updated_at ?? null,
+      },
     })
   } catch (error) {
     console.error('Status error:', error)

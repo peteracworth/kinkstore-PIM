@@ -38,6 +38,21 @@ interface ProductDetail {
   last_synced_at: string | null
   metadata: Record<string, unknown> | null
   variants: Variant[]
+  unassociated_media?: UnassociatedMedia[]
+}
+
+interface UnassociatedMedia {
+  id: string
+  shopify_media_id: string
+  source_url: string
+  filename: string | null
+  alt_text: string | null
+  mime_type: string | null
+  width: number | null
+  height: number | null
+  position: number | null
+  shopify_created_at: string | null
+  shopify_updated_at: string | null
 }
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -198,6 +213,59 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Unassociated Shopify Media */}
+      <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white">Shopify Media (Unassociated)</h2>
+          <span className="text-slate-400 text-sm">
+            {product.unassociated_media?.length ?? 0} item(s)
+          </span>
+        </div>
+        {(!product.unassociated_media || product.unassociated_media.length === 0) ? (
+          <p className="text-slate-400">No unassociated Shopify media.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {product.unassociated_media.map((media) => (
+              <div
+                key={media.id}
+                className="bg-slate-900/50 border border-slate-700/50 rounded-lg overflow-hidden"
+              >
+                {media.source_url ? (
+                  <div className="aspect-video bg-slate-950 flex items-center justify-center">
+                    <img
+                      src={media.source_url}
+                      alt={media.alt_text || media.filename || 'Shopify image'}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                ) : (
+                  <div className="aspect-video bg-slate-950 flex items-center justify-center text-slate-500">
+                    No preview
+                  </div>
+                )}
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>Position: {media.position ?? '—'}</span>
+                    <span className="px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 font-semibold">
+                      Unassociated
+                    </span>
+                  </div>
+                  <p className="text-sm text-white truncate">{media.filename || media.shopify_media_id}</p>
+                  <p className="text-xs text-slate-500 truncate">{media.alt_text || 'No alt text'}</p>
+                  <div className="text-xs text-slate-500 flex gap-2">
+                    {media.width && media.height ? (
+                      <span>{media.width}×{media.height}</span>
+                    ) : null}
+                    {media.mime_type ? <span>{media.mime_type}</span> : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Metadata */}

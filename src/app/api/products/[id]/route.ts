@@ -53,6 +53,24 @@ export async function GET(
       .eq('id', id)
       .single()
 
+    if (product) {
+      const { data: stagedMedia, error: mediaError } = await supabase
+        .from('product_images_unassociated')
+        .select(
+          'id, shopify_media_id, source_url, filename, alt_text, mime_type, width, height, position, shopify_created_at, shopify_updated_at'
+        )
+        .or(
+          `product_id.eq.${product.id},shopify_product_id.eq.${product.shopify_product_id ?? 'null'}`
+        )
+        .order('position', { ascending: true })
+
+      if (mediaError) {
+        console.error('Product media staging error:', mediaError)
+      }
+
+      return NextResponse.json({ product: { ...product, unassociated_media: stagedMedia ?? [] } })
+    }
+
     if (error) {
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })

@@ -130,6 +130,8 @@ async function importProduct(
 
   const productId = productData.id
 
+  await upsertShopifyMedia(supabase, product, productId, shopifyProductId)
+
   // Upsert variants
   for (const { node: variant } of product.variants.edges) {
     const shopifyVariantId = extractShopifyId(variant.id)
@@ -250,4 +252,79 @@ export async function importAllProducts(
 }
 
 export type { ImportProgress, ImportResult }
+
+/**
+ * Upsert Shopify media into staging table product_images_unassociated
+ */
+async function upsertShopifyMedia(
+  supabase: SupabaseClient,
+  product: ShopifyProduct,
+  productId: string,
+  shopifyProductId: number
+) {
+  const mediaEdges = product.media?.edges || []
+  const now = new Date().toISOString()
+
+  for (let idx = 0; idx < mediaEdges.length; idx++) {
+    const node = mediaEdges[idx].node as {
+      id: string
+      alt?: string | null
+      image?: { url?: string; width?: number; height?: number } | null
+    }
+
+    const url = node.image?.url
+    if (!url) continue
+
+    const filename = extractFilename(url)
+    const mime = guessMime(filename)
+
+    const { error } = await supabase
+      .from('product_images_unassociated')
+      .upsert(
+        {
+          shopify_media_id: node.id,
+          shopify_product_id: shopifyProductId,
+          product_id: productId,
+          source_url: url,
+          filename,
+          alt_text: node.alt ?? null,
+          mime_type: mime,
+          byte_size: null,
+          width: node.image?.width ?? null,
+          height: node.image?.height ?? null,
+          position: idx + 1,
+          shopify_created_at: null,
+          shopify_updated_at: null,
+          updated_at: now,
+        },
+        { onConflict: 'shopify_media_id' }
+      )
+
+    if (error) {
+      console.error(`Failed to upsert Shopify media ${node.id}:`, error.message)
+    }
+  }
+}
+
+function extractFilename(url: string): string {
+  try {
+    const u = new URL(url)
+    const path = u.pathname.split('/')
+    const last = path[path.length - 1]
+    return last || url
+  } catch {
+    const parts = url.split('/')
+    return parts[parts.length - 1] || url
+  }
+}
+
+function guessMime(filename: string): string | null {
+  const lower = filename.toLowerCase()
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  if (lower.endsWith('.avif')) return 'image/avif'
+  return null
+}
 
