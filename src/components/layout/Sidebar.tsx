@@ -14,7 +14,7 @@ const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
   { name: 'Products', href: '/products', icon: '📦' },
   { name: 'Media Library', href: '/media', icon: '🖼️' },
-  { name: 'Import', href: '/import', icon: '⬇️' },
+  { name: 'Import', href: '/dashboard/import', icon: '⬇️' },
   { name: 'Sync Status', href: '/sync', icon: '🔄' },
   { name: 'Admin', href: '/admin', icon: '⚙️', roles: ['admin'] },
 ]

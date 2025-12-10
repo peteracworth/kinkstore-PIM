@@ -50,6 +50,20 @@ interface ImportResult {
   }
 }
 
+interface DriveFile {
+  id: string
+  name: string
+  mimeType: string
+  size?: number
+  modifiedTime?: string
+}
+
+interface StorjObject {
+  key: string
+  size?: number
+  lastModified?: string
+}
+
 export default function ImportPage() {
   const [status, setStatus] = useState<ImportStatus | null>(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -68,6 +82,15 @@ export default function ImportPage() {
     total: number
     totalPages: number
   }>({ page: 1, pageSize: 10, total: 0, totalPages: 1 })
+  const [driveFiles, setDriveFiles] = useState<DriveFile[]>([])
+  const [driveFolderId, setDriveFolderId] = useState('')
+  const [driveLoading, setDriveLoading] = useState(false)
+  const [driveError, setDriveError] = useState<string | null>(null)
+  const [storjObjects, setStorjObjects] = useState<StorjObject[]>([])
+  const [storjBucket, setStorjBucket] = useState('')
+  const [storjPrefix, setStorjPrefix] = useState('products/')
+  const [storjLoading, setStorjLoading] = useState(false)
+  const [storjError, setStorjError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchStatus()
@@ -151,6 +174,80 @@ export default function ImportPage() {
       setLogError(err instanceof Error ? err.message : 'Failed to load logs')
     }
   }
+
+  async function fetchDriveFiles(folderOverride?: string) {
+    setDriveLoading(true)
+    setDriveError(null)
+    try {
+      const params = new URLSearchParams()
+      const folderIdToUse = (folderOverride ?? driveFolderId).trim()
+      if (folderIdToUse) {
+        params.set('folderId', folderIdToUse)
+      }
+      const res = await fetch(`/api/gdrive/list${params.size ? `?${params.toString()}` : ''}`, {
+        cache: 'no-store',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setDriveError(data.error || 'Failed to load Drive files')
+        setDriveFiles([])
+        return
+      }
+      setDriveFiles(data.files || [])
+      if (!driveFolderId && data.folderId) {
+        setDriveFolderId(data.folderId)
+      }
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : 'Failed to load Drive files')
+      setDriveFiles([])
+    } finally {
+      setDriveLoading(false)
+    }
+  }
+
+  async function fetchStorjObjects(prefixOverride?: string, bucketOverride?: string) {
+    setStorjLoading(true)
+    setStorjError(null)
+    try {
+      const params = new URLSearchParams()
+      const bucketToUse = (bucketOverride ?? storjBucket).trim()
+      const prefixToUse = (prefixOverride ?? storjPrefix).trim()
+      if (bucketToUse) params.set('bucket', bucketToUse)
+      if (prefixToUse) params.set('prefix', prefixToUse)
+
+      const res = await fetch(`/api/storj/list${params.size ? `?${params.toString()}` : ''}`, {
+        cache: 'no-store',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setStorjError(data.error || 'Failed to load Storj contents')
+        setStorjObjects([])
+        return
+      }
+      setStorjObjects(
+        (data.objects || []).map((o: any) => ({
+          key: o.key,
+          size: o.size,
+          lastModified: o.lastModified,
+        })),
+      )
+      if (!storjBucket && data.bucket) setStorjBucket(data.bucket)
+      if (prefixOverride === undefined && storjPrefix === 'products/' && data.prefix) {
+        setStorjPrefix(data.prefix)
+      }
+    } catch (err) {
+      setStorjError(err instanceof Error ? err.message : 'Failed to load Storj contents')
+      setStorjObjects([])
+    } finally {
+      setStorjLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    // Initial fetch using backend default folder if available
+    fetchDriveFiles()
+    fetchStorjObjects()
+  }, [])
 
   return (
     <div className="space-y-8">
@@ -377,17 +474,191 @@ export default function ImportPage() {
         </div>
       </div>
 
-      {/* Future: Google Drive Import */}
-      <div className="bg-slate-800/30 rounded-xl border border-slate-700/30 p-6 opacity-50">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center text-2xl">
-            📁
+      {/* Google Drive Import */}
+      <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div className="p-6 border-b border-slate-700/50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center text-2xl">
+              📁
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">Google Drive Import</h2>
+              <p className="text-slate-400 text-sm">
+                Browse the SKU folder from Drive (read-only) and verify access
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-semibold text-white">Google Drive Import</h2>
-            <p className="text-slate-400 text-sm">
-              Coming in Phase 5 — Import media from Google Drive folders
-            </p>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-300">Folder ID (optional)</label>
+              <input
+                value={driveFolderId}
+                onChange={(e) => setDriveFolderId(e.target.value)}
+                placeholder="Leave blank to use backend default"
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => fetchDriveFiles()}
+                disabled={driveLoading}
+                className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {driveLoading ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <span>🔍</span>
+                    List files
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {driveError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-300">
+              {driveError}
+            </div>
+          )}
+
+          <div className="bg-slate-900/60 border border-slate-700/70 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="text-slate-200 text-sm">
+                {driveLoading
+                  ? 'Loading...'
+                  : driveFiles.length
+                    ? `${driveFiles.length} items`
+                    : 'No files loaded yet'}
+              </div>
+              {driveFolderId && (
+                <div className="text-[11px] text-slate-500 truncate max-w-md">
+                  Folder: {driveFolderId}
+                </div>
+              )}
+            </div>
+            <div className="divide-y divide-slate-800 max-h-96 overflow-y-auto text-sm text-slate-200">
+              {driveFiles.map((file) => (
+                <div key={file.id} className="px-4 py-2 flex items-center justify-between">
+                  <div className="truncate">
+                    <span className="font-medium">{file.name}</span>
+                    <span className="text-[11px] text-slate-500 ml-2">{file.mimeType}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 ml-4 whitespace-nowrap">
+                    {file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : ''}
+                  </div>
+                </div>
+              ))}
+              {!driveLoading && driveFiles.length === 0 && (
+                <div className="px-4 py-6 text-center text-slate-500">No results yet.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Storj Browse */}
+      <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div className="p-6 border-b border-slate-700/50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center text-2xl">
+              ☁️
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">Storj Browse</h2>
+              <p className="text-slate-400 text-sm">
+                Peek into Storj via S3 list (read-only). Uses default bucket unless overridden.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-sm text-slate-300">Bucket (optional)</label>
+              <input
+                value={storjBucket}
+                onChange={(e) => setStorjBucket(e.target.value)}
+                placeholder="Leave blank to use STORJ_S3_BUCKET"
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-300">Prefix</label>
+              <input
+                value={storjPrefix}
+                onChange={(e) => setStorjPrefix(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={() => fetchStorjObjects()}
+              disabled={storjLoading}
+              className="py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {storjLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <span>👁️</span>
+                  List objects
+                </>
+              )}
+            </button>
+          </div>
+
+          {storjError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-300">
+              {storjError}
+            </div>
+          )}
+
+          <div className="bg-slate-900/60 border border-slate-700/70 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="text-slate-200 text-sm">
+                {storjLoading
+                  ? 'Loading...'
+                  : storjObjects.length
+                    ? `${storjObjects.length} items`
+                    : 'No objects loaded yet'}
+              </div>
+              {(storjBucket || storjPrefix) && (
+                <div className="text-[11px] text-slate-500 truncate max-w-md">
+                  {storjBucket ? `Bucket: ${storjBucket} ` : ''}
+                  {storjPrefix ? `Prefix: ${storjPrefix}` : ''}
+                </div>
+              )}
+            </div>
+            <div className="divide-y divide-slate-800 max-h-96 overflow-y-auto text-sm text-slate-200">
+              {storjObjects.map((obj) => (
+                <div key={obj.key} className="px-4 py-2 flex items-center justify-between">
+                  <div className="truncate">
+                    <span className="font-medium">{obj.key}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 ml-4 whitespace-nowrap">
+                    {obj.lastModified
+                      ? new Date(obj.lastModified).toLocaleDateString()
+                      : ''}
+                  </div>
+                </div>
+              ))}
+              {!storjLoading && storjObjects.length === 0 && (
+                <div className="px-4 py-6 text-center text-slate-500">No results yet.</div>
+              )}
+            </div>
           </div>
         </div>
       </div>
