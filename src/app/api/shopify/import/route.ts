@@ -48,7 +48,7 @@ export async function POST() {
     // Run import with progress logging
     const result = await importAllProducts(supabase, {
       logId,
-      progressEvery: 10,
+      progressEvery: 1,
     })
 
     return NextResponse.json(result)

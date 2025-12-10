@@ -33,41 +33,6 @@ interface ImportResult {
 }
 
 /**
- * Derive sku_label from variant SKUs
- * For multi-variant products: strip size/color suffix
- * For single-variant: use the SKU as-is
- */
-function deriveSkuLabel(variants: ShopifyProduct['variants']): string | null {
-  const skus = variants.edges
-    .map(e => e.node.sku)
-    .filter((sku): sku is string => sku !== null && sku.length > 0)
-
-  if (skus.length === 0) return null
-
-  if (skus.length === 1) {
-    // Single variant - use SKU as-is
-    return skus[0]
-  }
-
-  // Multi-variant - find common prefix
-  // Example: RSV-V-PRODUCT-S, RSV-V-PRODUCT-M, RSV-V-PRODUCT-L -> RSV-V-PRODUCT
-  const firstSku = skus[0]
-  
-  // Try to find a common base by removing common size/color suffixes
-  const suffixPattern = /[-_](XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|ONE|OS|\d+)$/i
-  const baseSkus = skus.map(sku => sku.replace(suffixPattern, ''))
-  
-  // Check if all base SKUs are the same
-  const allSame = baseSkus.every(s => s === baseSkus[0])
-  if (allSame && baseSkus[0].length > 0) {
-    return baseSkus[0]
-  }
-
-  // Fallback: use first SKU as base
-  return firstSku.replace(suffixPattern, '') || firstSku
-}
-
-/**
  * Convert Shopify metafields to our metadata JSONB format
  */
 function convertMetafields(
@@ -97,7 +62,9 @@ async function importProduct(
   product: ShopifyProduct
 ): Promise<void> {
   const shopifyProductId = extractShopifyId(product.id)
-  const skuLabel = deriveSkuLabel(product.variants)
+  const skuLabel =
+    product.variants.edges.find(({ node }) => node.sku && node.sku.length > 0)
+      ?.node.sku || null
   const metadata = convertMetafields(product.metafields)
 
   // Fetch existing sku_label (for logging/debug)
@@ -241,17 +208,24 @@ export async function importAllProducts(
 
   for await (const products of pageGenerator) {
     for (const product of products) {
+      const shopifyProductId = extractShopifyId(product.id)
       try {
         await importProduct(supabase, product)
         progress.imported++
         processedSinceLastReport++
+        console.log(
+          `[Import] ${progress.imported}/${progress.total} OK ${product.title} (shopify_product_id=${shopifyProductId})`
+        )
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         progress.errors.push({
           productId: product.id,
           error: errorMessage,
         })
-        console.error(`Error importing ${product.title}:`, errorMessage)
+        console.error(
+          `[Import] ${progress.imported}/${progress.total} ERROR ${product.title} (shopify_product_id=${shopifyProductId}):`,
+          errorMessage
+        )
         processedSinceLastReport++
         onProgress?.(progress, errorMessage)
         if (logId) {

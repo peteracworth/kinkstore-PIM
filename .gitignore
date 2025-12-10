@@ -29,6 +29,11 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.prod.local
+logs/
+tmp/
+supabase/.branches/
+supabase/.temp/
 
 # Vercel
 .vercel

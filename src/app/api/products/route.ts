@@ -15,14 +15,36 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const pageSize = parseInt(searchParams.get('pageSize') || '20')
-    const search = searchParams.get('search') || ''
+    const search = (searchParams.get('search') || '').trim()
+    const searchEscaped = search.replace(/,/g, '\\,')
 
     const offset = (page - 1) * pageSize
+
+    // If searching, prefetch product IDs that match variant-side criteria so we can include them in the OR filter without duplicating rows
+    const variantProductIds: string[] = []
+    if (search) {
+      const { data: variantHits } = await supabase
+        .from('product_variants')
+        .select('product_id')
+        .or(
+          [
+            `sku.ilike.%${searchEscaped}%`,
+            `id.eq.${searchEscaped}`,
+            `shopify_variant_id.eq.${searchEscaped}`,
+          ].join(',')
+        )
+        .limit(500)
+
+      variantHits?.forEach((v) => {
+        if (v.product_id) variantProductIds.push(v.product_id)
+      })
+    }
 
     // Build query
     let query = supabase
       .from('products')
-      .select(`
+      .select(
+        `
         id,
         title,
         handle,
@@ -34,13 +56,28 @@ export async function GET(request: NextRequest) {
         tags,
         last_synced_at,
         variants:product_variants(count)
-      `, { count: 'exact' })
+      `,
+        { count: 'exact' }
+      )
       .order('title', { ascending: true })
       .range(offset, offset + pageSize - 1)
 
-    // Add search filter
+    // Add search filter across product fields and variant-linked product IDs
     if (search) {
-      query = query.or(`title.ilike.%${search}%,sku_label.ilike.%${search}%,handle.ilike.%${search}%`)
+      const isNumeric = /^[0-9]+$/.test(search)
+      const filters = [
+        `title.ilike.%${searchEscaped}%`,
+        `sku_label.ilike.%${searchEscaped}%`,
+        `handle.ilike.%${searchEscaped}%`,
+        `id.eq.${searchEscaped}`,
+      ]
+      if (isNumeric) {
+        filters.push(`shopify_product_id.eq.${searchEscaped}`)
+      }
+      if (variantProductIds.length > 0) {
+        filters.push(`id.in.(${variantProductIds.join(',')})`)
+      }
+      query = query.or(filters.join(','))
     }
 
     const { data: products, count, error } = await query

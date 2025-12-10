@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface ImportStatus {
   running: {
@@ -43,12 +43,30 @@ export default function ImportPage() {
   const [isImporting, setIsImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [logText, setLogText] = useState('')
+  const [logError, setLogError] = useState<string | null>(null)
+  const logRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     fetchStatus()
     const interval = setInterval(fetchStatus, 4000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    fetchLogs()
+    const interval = setInterval(fetchLogs, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const el = logRef.current
+    if (!el) return
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40
+    if (nearBottom) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [logText])
 
   async function fetchStatus() {
     try {
@@ -85,6 +103,22 @@ export default function ImportPage() {
       setError(err instanceof Error ? err.message : 'Import failed')
     } finally {
       setIsImporting(false)
+    }
+  }
+
+  async function fetchLogs() {
+    try {
+      setLogError(null)
+      const res = await fetch('/api/logs/dev?lines=400', { cache: 'no-store' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setLogError(body.error || 'Failed to load logs')
+        return
+      }
+      const text = await res.text()
+      setLogText(text)
+    } catch (err) {
+      setLogError(err instanceof Error ? err.message : 'Failed to load logs')
     }
   }
 
@@ -241,6 +275,29 @@ export default function ImportPage() {
           <p className="text-slate-500 text-sm text-center">
             This will import all products from Shopify. Existing products will be updated.
           </p>
+
+          {/* Dev Log Viewer */}
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-400">Dev log (tail of logs/next-dev.log)</p>
+              <button
+                onClick={fetchLogs}
+                className="text-xs px-3 py-1 rounded-md bg-slate-700 text-slate-200 hover:bg-slate-600 transition"
+              >
+                Refresh
+              </button>
+            </div>
+            <div
+              ref={logRef}
+              className="bg-slate-900/60 border border-slate-700/70 rounded-lg p-3 text-xs text-slate-200 font-mono h-56 overflow-y-auto whitespace-pre-wrap"
+            >
+              {logError
+                ? `⚠️ ${logError}`
+                : logText
+                  ? logText
+                  : 'No log output yet.'}
+            </div>
+          </div>
         </div>
       </div>
 
