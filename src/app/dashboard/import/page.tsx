@@ -31,6 +31,12 @@ interface ImportStatus {
     status: string
     lastError: string | null
   }>
+  recentErrorsMeta?: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+  }
 }
 
 interface ImportResult {
@@ -55,12 +61,19 @@ export default function ImportPage() {
   const [recentErrors, setRecentErrors] = useState<
     Array<{ id: string; createdAt: string; status: string; lastError: string | null }>
   >([])
+  const [errorsPage, setErrorsPage] = useState(1)
+  const [errorsMeta, setErrorsMeta] = useState<{
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+  }>({ page: 1, pageSize: 10, total: 0, totalPages: 1 })
 
   useEffect(() => {
     fetchStatus()
     const interval = setInterval(fetchStatus, 4000)
     return () => clearInterval(interval)
-  }, [])
+  }, [errorsPage])
 
   useEffect(() => {
     fetchLogs()
@@ -79,11 +92,18 @@ export default function ImportPage() {
 
   async function fetchStatus() {
     try {
-      const res = await fetch('/api/shopify/import')
+      const params = new URLSearchParams({
+        errorsPage: errorsPage.toString(),
+        errorsPageSize: errorsMeta.pageSize.toString(),
+      })
+      const res = await fetch(`/api/shopify/import?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setStatus(data)
         setRecentErrors(data.recentErrors || [])
+        if (data.recentErrorsMeta) {
+          setErrorsMeta(data.recentErrorsMeta)
+        }
       }
     } catch (err) {
       console.error('Failed to fetch status:', err)
@@ -312,7 +332,7 @@ export default function ImportPage() {
           {/* Recent Errors */}
           <div className="mt-4 space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-400">Recent import errors (last 10)</p>
+              <p className="text-sm text-slate-400">Recent import errors</p>
               <button
                 onClick={fetchStatus}
                 className="text-xs px-3 py-1 rounded-md bg-slate-700 text-slate-200 hover:bg-slate-600 transition"
@@ -332,6 +352,27 @@ export default function ImportPage() {
                 </div>
               ))}
             </div>
+            {errorsMeta.totalPages > 1 && (
+              <div className="flex items-center justify-between text-xs text-slate-400 mt-2">
+                <button
+                  onClick={() => setErrorsPage(Math.max(1, errorsPage - 1))}
+                  disabled={errorsPage === 1}
+                  className="px-3 py-1 rounded bg-slate-700 disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <span>
+                  Page {errorsPage} / {errorsMeta.totalPages} ({errorsMeta.total} errors)
+                </span>
+                <button
+                  onClick={() => setErrorsPage(Math.min(errorsMeta.totalPages, errorsPage + 1))}
+                  disabled={errorsPage === errorsMeta.totalPages}
+                  className="px-3 py-1 rounded bg-slate-700 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

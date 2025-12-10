@@ -1,6 +1,6 @@
 import { createUntypedClient } from '@/lib/supabase/server-untyped'
 import { importAllProducts } from '@/lib/shopify/import'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST() {
   try {
@@ -64,9 +64,17 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   // Return import status / last sync info
   try {
+    const url = new URL(request.url)
+    const errorsPage = Math.max(parseInt(url.searchParams.get('errorsPage') || '1', 10) || 1, 1)
+    const errorsPageSize = Math.min(
+      Math.max(parseInt(url.searchParams.get('errorsPageSize') || '10', 10) || 10, 1),
+      50
+    )
+    const errorsOffset = (errorsPage - 1) * errorsPageSize
+
     const supabase = await createUntypedClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -112,17 +120,20 @@ export async function GET() {
       .maybeSingle()
 
     // Recent errors (if any) for display
-    const { data: recentErrors } = await supabase
+    const {
+      data: recentErrors,
+      count: recentErrorsCount,
+    } = await supabase
       .from('sync_logs')
       .select(`
         id,
         created_at,
         status,
         details
-      `)
+      `, { count: 'exact' })
       .not('details->>lastError', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(10)
+      .range(errorsOffset, errorsOffset + errorsPageSize - 1)
 
     return NextResponse.json({
       running: runningLog
@@ -151,6 +162,12 @@ export async function GET() {
         status: row.status,
         lastError: row.details?.lastError ?? null,
       })) ?? [],
+      recentErrorsMeta: {
+        page: errorsPage,
+        pageSize: errorsPageSize,
+        total: recentErrorsCount ?? 0,
+        totalPages: recentErrorsCount ? Math.max(1, Math.ceil(recentErrorsCount / errorsPageSize)) : 1,
+      },
     })
   } catch (error) {
     console.error('Status error:', error)
