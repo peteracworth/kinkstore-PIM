@@ -10,12 +10,51 @@ function cleanPrefix(prefix?: string | null) {
   return prefix.replace(/^\/+/, '').replace(/\/+$/, '')
 }
 
+/**
+ * Determine workflow category based on Google Drive folder path
+ * For now, we import everything and will set proper constraints later
+ */
+function determineWorkflowCategory(filePath: string): string {
+  const lowerPath = filePath.toLowerCase()
+
+  // Check for raw captures folder
+  if (lowerPath.includes('/raw captures/') || lowerPath.includes('/raw_captures/')) {
+    return 'raw_capture'
+  }
+
+  // Check for final ecom folder
+  if (lowerPath.includes('/final ecom') || lowerPath.includes('/final_ecom')) {
+    return 'final_ecom'
+  }
+
+  // Check for PSD cutouts specifically
+  if (lowerPath.includes('/psd') && lowerPath.includes('/cutouts')) {
+    return 'psd_cutout'
+  }
+
+  // Check for other PSD or project files
+  if (lowerPath.includes('/psd') || lowerPath.includes('/project')) {
+    return 'project_file'
+  }
+
+  // For any other folders under Photos/, default to raw_capture
+  // This allows importing everything now and categorizing later
+  if (lowerPath.includes('/photos/')) {
+    return 'raw_capture'
+  }
+
+  // Ultimate fallback
+  return 'raw_capture'
+}
+
 export async function POST(request: Request) {
   try {
+    console.log('=== GOOGLE DRIVE IMPORT STARTED ===')
     const body = await request.json().catch(() => ({}))
     const folderId = body.folderId || process.env.GOOGLE_DRIVE_SKU_FOLDER_ID
     const bucket = process.env.STORJ_S3_BUCKET || process.env.STORJ_BUCKET
     const supabase = await createUntypedClient()
+    console.log('Auth check starting...')
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -27,14 +66,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'bucket is required (set STORJ_S3_BUCKET or STORJ_BUCKET)' }, { status: 400 })
     }
     if (!user) {
+      console.log('Auth failed: no user')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    console.log('Auth successful, user:', user.email)
 
     const basePath =
       cleanPrefix(body.basePath) ||
       cleanPrefix(process.env.STORJ_BASE_PATH || process.env.STORJ_PATH_PREFIX || '')
 
+    console.log('Calling listFolderTree with folderId:', folderId)
     const files = await listFolderTree(folderId)
+    console.log('Found', files.length, 'files in Google Drive')
 
     const results = {
       total: files.length,
@@ -46,6 +90,7 @@ export async function POST(request: Request) {
       skippedNoProduct: 0,
     }
 
+    const seenSkuLogs = new Set<string>()
     const bucketCache = new Map<
       string,
       { id: string; storjPath: string }
@@ -59,6 +104,12 @@ export async function POST(request: Request) {
 
         if (!skuLabel) {
           throw new Error('Missing SKU label in path')
+        }
+
+        // Log once per SKU when starting
+        if (!seenSkuLogs.has(skuLabel)) {
+          console.info(`IMPORTING SKU folder ${skuLabel}`)
+          seenSkuLogs.add(skuLabel)
         }
 
         // Lookup/create media bucket for sku_label
@@ -90,16 +141,22 @@ export async function POST(request: Request) {
             .single()
 
           if (bucketErr) {
+            console.error(
+              `IMPORT ERROR bucket upsert failed sku=${skuLabel}: ${bucketErr.message}`,
+            )
             throw new Error(`Bucket upsert failed for ${skuLabel}: ${bucketErr.message}`)
           }
 
           if (mb) {
             if (mb.id !== undefined) {
               results.bucketsCreated += 1
+              console.log(`✓ Created media_bucket for SKU: ${skuLabel}, ID: ${mb.id}`)
             }
             bucketInfo = { id: mb.id, storjPath: mb.storj_path }
             bucketCache.set(skuLabel, bucketInfo)
+            console.info(`MADE ENTRY IN media_buckets for ${skuLabel}`)
           } else {
+            console.log(`✗ Bucket upsert returned no data for ${skuLabel}`)
             throw new Error(`Bucket upsert returned no data for ${skuLabel}`)
           }
         }
@@ -107,6 +164,7 @@ export async function POST(request: Request) {
         const key = [basePath, file.path].filter(Boolean).join('/')
         await uploadObject(bucket, key, buffer, file.mimeType)
         results.uploaded += 1
+        console.info(`STORED to STORJ with path ${key}`)
 
         const mediaType = file.mimeType.startsWith('image/')
           ? 'image'
@@ -114,11 +172,26 @@ export async function POST(request: Request) {
             ? 'video'
             : 'file'
 
+        const workflowCategory = determineWorkflowCategory(file.path)
+
+        // Check if asset already exists to prevent duplicates
+        const { data: existingAsset } = await supabase
+          .from('media_assets')
+          .select('id')
+          .eq('file_key', key)
+          .single()
+
+        if (existingAsset) {
+          console.log(`⏭️  Skipping duplicate file: ${file.name} (already exists)`)
+          results.assetsCreated += 1 // Count as "created" for stats
+          continue
+        }
+
         const { error: assetErr } = await supabase.from('media_assets').insert({
           media_bucket_id: bucketInfo.id,
           media_type: mediaType,
-          workflow_state: 'imported',
-          workflow_category: 'raw',
+          workflow_state: 'raw',
+          workflow_category: workflowCategory,
           file_url: `storj://${bucket}/${key}`,
           file_key: key,
           file_size: buffer.length,
@@ -131,16 +204,25 @@ export async function POST(request: Request) {
         })
 
         if (assetErr) {
+          console.error(
+            `IMPORT ERROR media_assets insert failed sku=${skuLabel} path=${file.path}: ${assetErr.message}`,
+          )
           throw new Error(`Asset insert failed for ${file.path}: ${assetErr.message}`)
         }
 
         results.assetsCreated += 1
+        console.info(`MADE ENTRY IN media_assets for ${file.path}`)
       } catch (err) {
         results.failed += 1
         results.errors.push({
           path: file.path,
           message: err instanceof Error ? err.message : 'Unknown error',
         })
+        console.error(
+          `IMPORT ERROR sku=${file.path.split('/')[0] || 'unknown'} path=${file.path}: ${
+            err instanceof Error ? err.message : 'Unknown error'
+          }`,
+        )
       }
     }
 
